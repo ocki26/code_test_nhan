@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Fingerprint Dump — Ruyi Browser Test</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial;
+        margin: 18px;
+        background-color: #1e1e1e;
+        color: #e0e0e0;
+      }
+      h2 { color: #fff; }
+      pre {
+        background: #111;
+        color: #a5d6a7;
+        padding: 12px;
+        overflow: auto;
+        max-height: 600px;
+        border: 1px solid #333;
+        border-radius: 4px;
+        font-family: Consolas, monospace;
+        font-size: 13px;
+      }
+      button {
+        margin: 6px 8px 6px 0;
+        padding: 10px 16px;
+        cursor: pointer;
+        background-color: #2196f3;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-weight: 600;
+      }
+      button:disabled {
+        background-color: #555;
+        cursor: not-allowed;
+      }
+      button:hover:not(:disabled) {
+        background-color: #1976d2;
+      }
+      label {
+        display: inline-block;
+        margin-right: 15px;
+        cursor: pointer;
+      }
+      summary {
+        font-weight: 600;
+        margin-top: 12px;
+        cursor: pointer;
+        color: #90caf9;
+      }
+      .warn {
+        color: #ffd54f;
+        background: #332b00;
+        padding: 10px;
+        border-left: 4px solid #ffca28;
+        margin-bottom: 15px;
+        border-radius: 2px;
+      }
+      .highlight {
+        color: #ff8a80;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Ruyi Browser — Fingerprint Deep Check</h2>
+    <div class="warn">
+      <strong>Lưu ý:</strong> File này đã được mod để kiểm tra sâu <strong>Client Hints (UA-CH)</strong>. 
+      Hãy dùng nó để đối chiếu với file JSON cấu hình `--ruyi` của bạn.
+    </div>
+
+    <div>
+      <label><input id="opt-webrtc" type="checkbox" /> Thu WebRTC (Check IP Leak)</label>
+      <label><input id="opt-audio" type="checkbox" checked /> Thu Audio Context</label>
+      <label><input id="opt-fonts" type="checkbox" checked /> Quét Fonts</label>
+    </div>
+
+    <div style="margin-top: 15px">
+      <button id="btnCollect">Bắt đầu Quét (Collect)</button>
+      <button id="btnHash" disabled>Tính Hash SHA-256</button>
+      <button id="btnDownload" disabled>Tải JSON</button>
+      <button id="btnCopy" disabled>Copy JSON</button>
+    </div>
+
+    <details open style="margin-top: 15px">
+      <summary>Cách kiểm tra kết quả</summary>
+      <ol>
+        <li>Chạy trình duyệt với tham số: <code>--ruyi="{...json...}"</code></li>
+        <li>Bấm <strong>Bắt đầu Quét</strong>.</li>
+        <li>Tìm mục <span class="highlight">navigator > userAgentDataFull</span> trong kết quả.</li>
+        <li>Kiểm tra xem <code>brands</code>, <code>fullVersionList</code> và <code>platform</code> có khớp với JSON bạn nạp vào không.</li>
+      </ol>
+    </details>
+
+    <h3>Kết quả Output (JSON)</h3>
+    <pre id="out">Chưa có dữ liệu. Nhấn nút màu xanh để bắt đầu.</pre>
+
+    <script>
+      /* Utility: safe access to prevent crash */
+      function safe(fn) {
+        try {
+          return fn();
+        } catch (e) {
+          return { error: String(e) };
+        }
+      }
+
+      /* SHA-256 hex util */
+      async function sha256Hex(textOrBuffer) {
+        const buf =
+          typeof textOrBuffer === "string"
+            ? new TextEncoder().encode(textOrBuffer)
+            : textOrBuffer;
+        const hash = await crypto.subtle.digest("SHA-256", buf);
+        const arr = Array.from(new Uint8Array(hash));
+        return arr.map((b) => b.toString(16).padStart(2, "0")).join("");
+      }
+
+      /* Canvas fingerprint */
+      async function getCanvasFingerprint() {
+        try {
+          const c = document.createElement("canvas");
+          c.width = 320;
+          c.height = 120;
+          const ctx = c.getContext("2d");
+          ctx.fillStyle = "#f3f3f3";
+          ctx.fillRect(0, 0, c.width, c.height);
+          ctx.textBaseline = "top";
+          ctx.font = "16px Arial";
+          ctx.fillStyle = "#110011";
+          ctx.fillText("fingerprint test — 𠜎 𝌆", 10, 10);
+          ctx.font = "20px 'Times New Roman'";
+          ctx.fillStyle = "#010101";
+          ctx.fillText("ƒÞ ẞ æ", 10, 40);
+          ctx.globalCompositeOperation = "multiply";
+          ctx.fillStyle = "rgba(200,50,50,0.7)";
+          ctx.fillRect(50, 60, 100, 30);
+          const dataURL = c.toDataURL();
+          const pixels = ctx.getImageData(0, 0, c.width, c.height).data.buffer;
+          const pxhash = await sha256Hex(pixels);
+          return { dataURL, pxhash };
+        } catch (e) {
+          return { error: String(e) };
+        }
+      }
+
+      /* WebGL fingerprint */
+      function getWebGL() {
+        try {
+          const canvas = document.createElement("canvas");
+          const gl =
+            canvas.getContext("webgl") ||
+            canvas.getContext("experimental-webgl");
+          if (!gl) return { supported: false };
+          const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+          const params = {
+            supported: true,
+            renderer: dbg
+              ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
+              : gl.getParameter(gl.RENDERER),
+            vendor: dbg
+              ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL)
+              : gl.getParameter(gl.VENDOR),
+            version: gl.getParameter(gl.VERSION),
+            shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+            maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+            extensions: gl.getSupportedExtensions(),
+          };
+          return params;
+        } catch (e) {
+          return { error: String(e) };
+        }
+      }
+
+      /* Audio fingerprint */
+      async function getAudioFingerprint() {
+        try {
+          if (!window.OfflineAudioContext && !window.webkitOfflineAudioContext)
+            return { supported: false };
+          const OfflineAC =
+            window.OfflineAudioContext || window.webkitOfflineAudioContext;
+          const ctx = new OfflineAC(1, 44100, 44100);
+          const o = ctx.createOscillator();
+          const gain = ctx.createGain();
+          o.type = "sine";
+          o.frequency.value = 440;
+          gain.gain.value = 0.5;
+          o.connect(gain);
+          gain.connect(ctx.destination);
+          o.start(0);
+          ctx.startRendering();
+          const rendered = await new Promise((res, rej) => {
+            ctx.oncomplete = (e) => res(e.renderedBuffer);
+            setTimeout(() => rej("timeout"), 2000);
+          }).catch((e) => ({ error: String(e) }));
+          if (rendered && rendered.getChannelData) {
+            const ch = rendered.getChannelData(0).slice(0, 1024);
+            const buf = new Float32Array(ch).buffer;
+            const hash = await sha256Hex(buf);
+            return { sampleRate: ctx.sampleRate || null, hash };
+          } else {
+            return { error: "no rendered buffer" };
+          }
+        } catch (e) {
+          return { error: String(e) };
+        }
+      }
+
+      /* Fonts detection */
+      function detectFonts() {
+        const common = [
+          "Arial", "Helvetica", "Times New Roman", "Courier New", "Georgia",
+          "Verdana", "Tahoma", "Trebuchet MS", "Comic Sans MS", "Impact",
+          "Segoe UI", "Roboto", "Noto Sans",
+        ];
+        const results = {};
+        for (const f of common) {
+          try {
+            if (document.fonts && document.fonts.check) {
+              results[f] = document.fonts.check("12px " + f);
+            } else {
+              const span = document.createElement("span");
+              span.style.fontSize = "12px";
+              span.style.position = "absolute";
+              span.style.left = "-9999px";
+              span.style.fontFamily = f + ", monospace";
+              span.textContent = "mmmmllll";
+              document.body.appendChild(span);
+              const w = span.offsetWidth;
+              document.body.removeChild(span);
+              results[f] = !!w;
+            }
+          } catch (e) {
+            results[f] = "err";
+          }
+        }
+        return results;
+      }
+
+      /* --- CORE FUNCTION: GATHER DATA --- */
+      async function gatherBaseline() {
+        const nav = navigator;
+        
+        // [MOD] Lấy Client Hints High Entropy Values
+        // Phần này cực quan trọng để check lỗi "Masking detected"
+        let uaDataFull = "not-supported";
+        if (nav.userAgentData && nav.userAgentData.getHighEntropyValues) {
+            try {
+                uaDataFull = await nav.userAgentData.getHighEntropyValues([
+                    "architecture",
+                    "bitness",
+                    "brands",
+                    "fullVersionList",
+                    "mobile",
+                    "model",
+                    "platform",
+                    "platformVersion",
+                    "uaFullVersion",
+                    "wow64"
+                ]);
+            } catch (e) {
+                uaDataFull = { error: String(e) };
+            }
+        }
+
+        const out = {
+          timestamp: new Date().toISOString(),
+          location: safe(() => ({
+            href: location.href,
+            hostname: location.hostname,
+          })),
+          navigator: {
+            userAgent: safe(() => nav.userAgent),
+            
+            // [MOD] Kiểm tra nhanh Brands
+            userAgentDataBasic: safe(() => nav.userAgentData ? {
+                brands: nav.userAgentData.brands,
+                mobile: nav.userAgentData.mobile,
+                platform: nav.userAgentData.platform
+            } : "undefined"),
+
+            // [MOD] Kiểm tra sâu (Full Version, Bitness...)
+            userAgentDataFull: uaDataFull,
+
+            platform: safe(() => nav.platform),
+            vendor: safe(() => nav.vendor),
+            languages: safe(() => nav.languages),
+            language: safe(() => nav.language),
+            hardwareConcurrency: safe(() => nav.hardwareConcurrency),
+            deviceMemory: safe(() => nav.deviceMemory),
+            maxTouchPoints: safe(() => nav.maxTouchPoints),
+            doNotTrack: safe(() => nav.doNotTrack),
+            webdriver: safe(() => nav.webdriver),
+            product: safe(() => nav.product),
+            productSub: safe(() => nav.productSub),
+            appVersion: safe(() => nav.appVersion),
+            cookieEnabled: safe(() => nav.cookieEnabled),
+          },
+          window: {
+            devicePixelRatio: safe(() => window.devicePixelRatio),
+            innerWidth: safe(() => window.innerWidth),
+            innerHeight: safe(() => window.innerHeight),
+            outerWidth: safe(() => window.outerWidth),
+            outerHeight: safe(() => window.outerHeight),
+            screenX: safe(() => window.screenX),
+            screenY: safe(() => window.screenY),
+            chrome: safe(() => typeof window.chrome !== "undefined"),
+          },
+          screen: {
+            width: safe(() => screen.width),
+            height: safe(() => screen.height),
+            availWidth: safe(() => screen.availWidth),
+            availHeight: safe(() => screen.availHeight),
+            colorDepth: safe(() => screen.colorDepth),
+            orientation: safe(() => screen.orientation && screen.orientation.type),
+          },
+          timezone: safe(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
+          permissions: {},
+          battery: null,
+        };
+
+        // Check permissions
+        const permNames = ["notifications", "camera", "microphone", "geolocation"];
+        if (navigator.permissions && navigator.permissions.query) {
+          for (const p of permNames) {
+            try {
+              const st = await navigator.permissions.query({ name: p }).catch(() => ({ state: "unsupported" }));
+              out.permissions[p] = st && st.state ? st.state : st;
+            } catch (e) {
+              out.permissions[p] = "inaccessible";
+            }
+          }
+        }
+
+        // Check battery
+        if (navigator.getBattery) {
+          try {
+            const bat = await navigator.getBattery();
+            out.battery = {
+              charging: bat.charging,
+              level: bat.level,
+            };
+          } catch (e) {
+            out.battery = { error: String(e) };
+          }
+        }
+
+        return out;
+      }
+
+      /* Basic MediaDevices info */
+      async function getMediaDevices() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices)
+          return { supported: false };
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          return devices.map((d) => ({
+            kind: d.kind,
+            label: d.label || "hidden",
+            deviceId: d.deviceId ? "present (masked)" : "empty",
+          }));
+        } catch (e) {
+          return { error: String(e) };
+        }
+      }
+
+      /* WebRTC ICE candidate gather */
+      async function gatherWebRTC() {
+        if (!window.RTCPeerConnection) return { supported: false };
+        const ips = new Set();
+        const pc = new RTCPeerConnection({ iceServers: [] });
+        try {
+          pc.createDataChannel("dummy", { ordered: false });
+        } catch (e) {}
+        pc.onicecandidate = (evt) => {
+          if (!evt || !evt.candidate) return;
+          const s = evt.candidate.candidate;
+          const parts = s.split(" ");
+          for (const p of parts) {
+            if (p.match(/([0-9]{1,3}\.){3}[0-9]{1,3}/)) ips.add(p);
+          }
+        };
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          await new Promise((res) => setTimeout(res, 1000));
+          pc.close();
+          return { ips: Array.from(ips) };
+        } catch (e) {
+          return { error: String(e) };
+        }
+      }
+
+      /* Main gather function */
+      async function collectAll(opts) {
+        const o = {};
+        o.baseline = await gatherBaseline();
+        o.canvas = await getCanvasFingerprint();
+        o.webgl = getWebGL();
+        if (opts.audio) o.audio = await getAudioFingerprint();
+        else o.audio = { skipped: true };
+        if (opts.fonts) o.fonts = detectFonts();
+        else o.fonts = { skipped: true };
+        o.mediaDevices = await getMediaDevices();
+        if (opts.webrtc) o.webrtc = await gatherWebRTC();
+        else o.webrtc = { skipped: true };
+        
+        o.meta = {
+          toolVersion: "Ruyi-Check-1.1",
+          collectedAt: new Date().toISOString(),
+        };
+        return o;
+      }
+
+      /* UI wiring */
+      const outEl = document.getElementById("out");
+      const btnCollect = document.getElementById("btnCollect");
+      const btnDownload = document.getElementById("btnDownload");
+      const btnCopy = document.getElementById("btnCopy");
+      const btnHash = document.getElementById("btnHash");
+
+      let lastJSON = null;
+      btnCollect.addEventListener("click", async () => {
+        outEl.textContent = "Đang quét dữ liệu (Vui lòng đợi 2-3 giây)...";
+        btnCollect.disabled = true;
+        const opts = {
+          webrtc: document.getElementById("opt-webrtc").checked,
+          audio: document.getElementById("opt-audio").checked,
+          fonts: document.getElementById("opt-fonts").checked,
+        };
+        try {
+          const data = await collectAll(opts);
+          lastJSON = data;
+          const pretty = JSON.stringify(data, null, 2);
+          outEl.textContent = pretty;
+          btnDownload.disabled = false;
+          btnCopy.disabled = false;
+          btnHash.disabled = false;
+        } catch (e) {
+          outEl.textContent = "Lỗi khi quét: " + String(e);
+        } finally {
+          btnCollect.disabled = false;
+        }
+      });
+
+      btnDownload.addEventListener("click", () => {
+        if (!lastJSON) return alert("Chưa có dữ liệu");
+        const blob = new Blob([JSON.stringify(lastJSON, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const ts = new Date().toISOString().replace(/[:.]/g, "-");
+        a.download = `ruyi-fingerprint-${ts}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      });
+
+      btnCopy.addEventListener("click", async () => {
+        if (!lastJSON) return alert("Chưa có dữ liệu");
+        try {
+          await navigator.clipboard.writeText(JSON.stringify(lastJSON, null, 2));
+          alert("Đã copy JSON vào clipboard!");
+        } catch (e) {
+          alert("Lỗi copy: " + e);
+        }
+      });
+
+      btnHash.addEventListener("click", async () => {
+        if (!lastJSON) return alert("Chưa có dữ liệu");
+        const plain = JSON.stringify(lastJSON, Object.keys(lastJSON).sort(), 2);
+        const h = await sha256Hex(plain);
+        alert("SHA-256: " + h);
+      });
+    </script>
+  </body>
+</html>
