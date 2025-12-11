@@ -1,0 +1,5 @@
+2025/12/11-16:28:23.279 5140 Creating DB E:\testnewchonium\ruyi_live_5458\Default\Local Storage\leveldb since it was missing.
+2025/12/11-16:28:23.300 5140 Reusing MANIFEST E:\testnewchonium\ruyi_live_5458\Default\Local Storage\leveldb/MANIFEST-000001
+2025/12/11-16:28:39.442 3d74 Level-0 table #5: started
+2025/12/11-16:28:39.458 3d74 Level-0 table #5: 27818 bytes OK
+2025/12/11-16:28:39.463 3d74 Delete type=0 #3

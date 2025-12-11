@@ -1,0 +1,26 @@
+{
+  "name": "testnewchonium",
+  "version": "1.0.0",
+  "description": "��#\u0000 \u0000c\u0000o\u0000d\u0000e\u0000_\u0000t\u0000e\u0000s\u0000t\u0000_\u0000n\u0000h\u0000a\u0000n\u0000\r\u0000 \u0000#\u0000 \u0000c\u0000o\u0000d\u0000e\u0000_\u0000t\u0000e\u0000s\u0000t\u0000_\u0000n\u0000h\u0000a\u0000n\u0000\r\u0000 \u0000",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ocki26/code_test_nhan.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ocki26/code_test_nhan/issues"
+  },
+  "homepage": "https://github.com/ocki26/code_test_nhan#readme",
+  "dependencies": {
+    "axios": "^1.13.2",
+    "https-proxy-agent": "^7.0.6",
+    "playwright": "^1.57.0",
+    "socks-proxy-agent": "^8.0.5"
+  }
+}
