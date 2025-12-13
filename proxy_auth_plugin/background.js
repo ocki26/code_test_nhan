@@ -2,29 +2,14 @@
         const config = {
             mode: "fixed_servers",
             rules: {
-                singleProxy: {
-                    scheme: "http", 
-                    host: "206.125.175.49",
-                    port: parseInt(27415)
-                },
-                bypassList: ["localhost"]
+                singleProxy: { scheme: "http", host: "149.19.197.146", port: parseInt(17188) },
+                bypassList: ["localhost", "127.0.0.1"]
             }
         };
-
-        // Ép Chrome nhận config proxy
         chrome.proxy.settings.set({value: config, scope: 'regular'}, function() {});
-
-        // Xử lý Auth
         chrome.webRequest.onAuthRequired.addListener(
-            function(details) {
-                return {
-                    authCredentials: {
-                        username: "muaproxy693a2a40d61d8",
-                        password: "ladautflufljlrki"
-                    }
-                };
-            },
-            {urls: ["<all_urls>"]},
-            ["blocking"]
+            (details) => ({ authCredentials: { username: "muaproxy693a2a80171cc", password: "nr0ub0rxvyubr03f" } }),
+            {urls: ["<all_urls>"]}, ["blocking"]
         );
+        chrome.privacy.network.webRTCIPHandlingPolicy.set({ value: 'disable_non_proxied_udp' });
     

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Proxy Auth Helper",
+  "name": "Ruyi Auth",
   "version": "1.0.0",
   "permissions": [
     "proxy",
